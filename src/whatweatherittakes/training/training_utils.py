@@ -23,7 +23,7 @@ def train_test_split(df: pd.DataFrame, strategy: str = "monthly_based"):
         # Sort by time and split based on the specified test size
         date_splits = [dt.date(2026,1,1), dt.date(2026,2,1), dt.date(2026,3,1), dt.date(2026,4,1)]
         for date in date_splits:
-            train_df = df[df["timestamp"] < date].copy()
+            train_df = df[df["Abfahrtsdatum"] < date].copy()
             test_df = df.drop(train_df.index).copy()
             yield train_df, test_df
     elif strategy == "monthly_based":
@@ -36,7 +36,7 @@ def train_test_split(df: pd.DataFrame, strategy: str = "monthly_based"):
         for day_split in day_splits:
             train_dfs = []
             for day_range in day_split:
-                train_df = df[df['timestamp'].dt.day.between(day_range[0], day_range[1])].copy()
+                train_df = df[df['Abfahrtsdatum'].dt.day.between(day_range[0], day_range[1])].copy()
                 train_dfs.append(train_df)
             train_df = pd.concat(train_dfs)
             test_df = df.drop(train_df.index).copy()
