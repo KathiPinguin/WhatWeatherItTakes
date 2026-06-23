@@ -1,17 +1,17 @@
-import pandas as pd
+import polars as pl
 import datetime as dt
 
-def train_test_split(df: pd.DataFrame, strategy: str = "monthly_based"):
+def train_test_split(df: pl.DataFrame, strategy: str = "monthly_based"):
     """
     Splits the DataFrame into training and testing sets based on the specified strategy.
 
     Parameters:
-    - df (pd.DataFrame): The input DataFrame to split.
+    - df (pl.DataFrame): The input DataFrame to split.
     - strategy (str): The splitting strategy to use. Options are "random", "time_based", or "monthly_based".
 
     Returns:
-    - train_df (pd.DataFrame): The training set.
-    - test_df (pd.DataFrame): The testing set.
+    - train_df (pl.DataFrame): The training set.
+    - test_df (pl.DataFrame): The testing set.
     """
     
     if strategy == "random":
@@ -38,7 +38,7 @@ def train_test_split(df: pd.DataFrame, strategy: str = "monthly_based"):
             for day_range in day_split:
                 train_df = df[df['Abfahrtsdatum'].dt.day.between(day_range[0], day_range[1])].copy()
                 train_dfs.append(train_df)
-            train_df = pd.concat(train_dfs)
+            train_df = pl.concat(train_dfs)
             test_df = df.drop(train_df.index).copy()
             yield train_df, test_df
         
