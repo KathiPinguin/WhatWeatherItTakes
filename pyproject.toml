@@ -1,5 +1,5 @@
 [project]
-name = "hack4rail-data"
+name = "whatweatherittakes"
 version = "0.1.0"
 description = "Read Hack4Rail Excel data with Polars"
 requires-python = ">=3.12"
@@ -20,3 +20,15 @@ dependencies = [
 [project.scripts]
 h4r-ingest = "main:ingest"
 h4r-process = "process:process"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.3.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
