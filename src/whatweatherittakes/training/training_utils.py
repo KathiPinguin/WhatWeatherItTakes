@@ -28,8 +28,8 @@ def train_test_split(df: pd.DataFrame, strategy: str = "monthly_based"):
             yield train_df, test_df
     elif strategy == "monthly_based":
         day_splits = [
-            ((1, 21)),
-            ((8, 31)),
+            ((1, 21),),
+            ((8, 31),),
             ((1, 7), (15, 31)),
             ((1, 14), (22, 31)),
         ]
