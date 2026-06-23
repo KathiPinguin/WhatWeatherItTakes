@@ -54,6 +54,10 @@ merged = pd.concat([
     shap_results[shap_cols].reset_index(drop=True),
 ], axis=1)
 
+# Compute predicted sEV: baseline (mean of training targets) + total SHAP
+baseline_sEV = y_train.mean()
+merged["predicted_sEV"] = baseline_sEV + merged["weather_shap_total"] + merged["non_weather_shap_total"]
+
 # Compute corrected sEV (weather effect removed)
 merged["corrected_sEV"] = merged["sEV"] - merged["weather_shap_total"]
 

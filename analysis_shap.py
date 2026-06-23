@@ -56,6 +56,7 @@ def run() -> None:
 
     result_df = X_sample.copy()
     result_df["sEV_actual"] = y_sample.values
+    result_df["predicted_sEV"] = explainer.expected_value + weather_shap + non_weather_shap
     result_df["corrected_sEV"] = y_sample.values - weather_shap
     # Individual weather SHAP values
     for i, name in zip(weather_idx, weather_names):
