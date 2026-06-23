@@ -1,0 +1,6 @@
+[virtualenvs]
+create = true
+in-project = true
+
+[repositories.artifactory]
+url = "https://bin.sbb.ch/artifactory/api/pypi/esta.pypi"

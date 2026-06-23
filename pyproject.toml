@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "WhatWeatherItTakes"
+version = "0.1.0"
+description = ""
+authors = []
+readme = "README.md"
+packages = [{include = "whatweatherittakes", from = "src"}]
+
+[tool.poetry.dependencies]                                      # Python is a high-level, general-purpose programming language. Its design philosophy emphasizes code readability with the use of significant indentation.
+python = ">=3.13, <3.14.0"         
+pandas = "~2.3.0"      
+
+[tool.poetry.group.dev.dependencies]                                                     # Powerful data structures for data analysis, time series, and statistics
+ipykernel = "^7.0.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
