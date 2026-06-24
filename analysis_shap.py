@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import time
+
+import lightgbm as lgb
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -16,38 +19,72 @@ from analysis_common import (
     load_data,
     prepare_Xy,
     split,
-    train_lgbm,
 )
 
-OUTPUT_DIR = Path("Output/analysis/shap")
+OUTPUT_DIR = Path("Output/model_tim/analysis/shap")
+MODEL_PATH = Path("Output/model_tim/model.txt")
 
+# Set to a number (e.g. 10_000) for quick testing, or None for all rows
+SAMPLE_N: int | None = None
+SAMPLE_N = 10_000
 
 def run() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
 
-    # --- Load & train ---
-    print("[shap] Loading data...")
+    def elapsed() -> str:
+        return f"{time.time() - t0:.1f}s"
+
+    # --- Load pre-trained model ---
+    print(f"[shap] [{elapsed()}] 1/8 Loading model from {MODEL_PATH}...")
+    booster = lgb.Booster(model_file=str(MODEL_PATH))
+    model_features = booster.feature_name()
+    print(f"[shap] Model features ({len(model_features)}): {model_features}")
+
+    # --- Load data and select model features ---
+    print(f"[shap] [{elapsed()}] 2/8 Loading and preparing data...")
     df, num_feats, cat_feats = load_data()
     all_feats = num_feats + cat_feats
     X, y, cmap = prepare_Xy(df, all_feats, cat_feats)
+
+    # LightGBM replaces spaces with underscores when saving to .txt
+    X.columns = X.columns.str.replace(" ", "_")
+
+    # Keep only the features the model was trained on
+    X = X[model_features]
     X_train, X_test, y_train, y_test = split(X, y)
 
-    print(f"[shap] Training LightGBM ({X_train.shape[0]:,} train, {X_test.shape[0]:,} test)...")
-    model = train_lgbm(X_train, y_train, X_test, y_test, verbose=True)
-    r2 = model.score(X_test, y_test)
-    print(f"[shap] Test R² = {r2:.4f}")
+    # Evaluate R² on test set
+    print(f"[shap] [{elapsed()}] 3/8 Evaluating model...")
+    y_pred_test = booster.predict(X_test)
+    ss_res = ((y_test - y_pred_test) ** 2).sum()
+    ss_tot = ((y_test - y_test.mean()) ** 2).sum()
+    r2 = 1 - ss_res / ss_tot
+    print(f"[shap] [{elapsed()}] Test R² = {r2:.4f}")
 
-    # --- SHAP on sample ---
-    sample_n = min(50_000, len(X_test))
-    X_sample = X_test.sample(n=sample_n, random_state=42)
-    y_sample = y_test.loc[X_sample.index]
+    # --- SHAP on ALL rows ---
+    # Concatenate train+test to get full dataset
+    X_all = pd.concat([X_train, X_test], axis=0)
+    y_all = pd.concat([y_train, y_test], axis=0)
 
-    print(f"[shap] Computing SHAP values on {sample_n:,} samples...")
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_sample)
+    if SAMPLE_N is not None:
+        X_all = X_all.sample(n=min(SAMPLE_N, len(X_all)), random_state=42)
+        y_all = y_all.loc[X_all.index]
+
+    sample_n = len(X_all)
+
+    print(f"[shap] [{elapsed()}] 4/8 Computing SHAP values on ALL {sample_n:,} rows (this may take a while)...")
+    explainer = shap.TreeExplainer(booster)
+    shap_values = explainer.shap_values(X_all)
+    print(f"[shap] [{elapsed()}] SHAP computation done.")
+
+    # Alias for downstream code
+    X_sample = X_all
+    y_sample = y_all
 
     # --- Weather attribution ---
-    weather_idx = [i for i, c in enumerate(X_sample.columns) if c in WEATHER_FEATURES_CLEAN]
+    weather_clean = [w.replace(" ", "_") for w in WEATHER_FEATURES_CLEAN]
+    weather_idx = [i for i, c in enumerate(X_sample.columns) if c in weather_clean]
     weather_names = [X_sample.columns[i] for i in weather_idx]
     non_weather_idx = [i for i in range(len(X_sample.columns)) if i not in weather_idx]
 
@@ -56,7 +93,7 @@ def run() -> None:
 
     result_df = X_sample.copy()
     result_df["sEV_actual"] = y_sample.values
-    result_df["predicted_sEV"] = explainer.expected_value + weather_shap + non_weather_shap
+    result_df["predicted_sEV"] = booster.predict(X_sample)
     result_df["corrected_sEV"] = y_sample.values - weather_shap
     # Individual weather SHAP values
     for i, name in zip(weather_idx, weather_names):
@@ -65,10 +102,12 @@ def run() -> None:
     result_df["non_weather_shap_total"] = non_weather_shap
     result_df["month"] = result_df.get("month", pd.Series(dtype=float))
 
+    print(f"[shap] [{elapsed()}] 5/8 Saving attribution CSV...")
     result_df.to_csv(OUTPUT_DIR / "weather_attribution.csv", index=False)
-    print(f"[shap] Saved per-trip attribution → {OUTPUT_DIR / 'weather_attribution.csv'}")
+    print(f"[shap] [{elapsed()}] Saved per-trip attribution → {OUTPUT_DIR / 'weather_attribution.csv'}")
 
     # --- Aggregate by month ---
+    print(f"[shap] [{elapsed()}] 6/8 Aggregating by month...")
     if "month" in result_df.columns:
         monthly = result_df.groupby("month")["weather_shap_total"].agg(["mean", "median", "std", "count"])
         monthly.columns = ["mean_weather_shap", "median_weather_shap", "std_weather_shap", "n_trips"]
@@ -88,6 +127,7 @@ def run() -> None:
         plt.close()
 
     # --- Summary stats ---
+    print(f"[shap] [{elapsed()}] 7/8 Computing summary stats...")
     abs_weather = np.abs(weather_shap)
     abs_total = np.abs(shap_values).sum(axis=1)
     weather_pct = (abs_weather.sum() / abs_total.sum()) * 100
@@ -115,9 +155,12 @@ def run() -> None:
     (OUTPUT_DIR / "stats.txt").write_text(stats_text)
     print(stats_text)
 
-    # --- SHAP summary plot ---
+    # --- SHAP summary plot (subsample for visualization) ---
+    print(f"[shap] [{elapsed()}] 8/8 Generating plots...")
+    plot_n = min(50_000, sample_n)
+    plot_idx = np.random.default_rng(42).choice(sample_n, size=plot_n, replace=False)
     fig, ax = plt.subplots(figsize=(12, 8))
-    shap.summary_plot(shap_values, X_sample, show=False, max_display=30)
+    shap.summary_plot(shap_values[plot_idx], X_sample.iloc[plot_idx], show=False, max_display=30)
     plt.tight_layout()
     plt.savefig(OUTPUT_DIR / "shap_summary.png", dpi=150, bbox_inches="tight")
     plt.close()
@@ -143,7 +186,7 @@ def run() -> None:
 
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     for ax, (idx, name, _) in zip(axes.flat, top_weather):
-        ax.scatter(X_sample.iloc[:, idx], shap_values[:, idx], alpha=0.1, s=1, rasterized=True)
+        ax.scatter(X_sample.iloc[plot_idx, idx], shap_values[plot_idx, idx], alpha=0.1, s=1, rasterized=True)
         ax.set_xlabel(name)
         ax.set_ylabel("SHAP value (kWh/km)")
         ax.axhline(0, color="black", linewidth=0.5)
@@ -247,8 +290,8 @@ def run() -> None:
 
     report_text = "\n".join(report_lines)
     (OUTPUT_DIR / "report.md").write_text(report_text)
-    print(f"\n[shap] Report saved to {OUTPUT_DIR / 'report.md'}")
-    print(f"[shap] All outputs saved to {OUTPUT_DIR}/")
+    print(f"\n[shap] [{elapsed()}] Report saved to {OUTPUT_DIR / 'report.md'}")
+    print(f"[shap] [{elapsed()}] All done! Outputs in {OUTPUT_DIR}/")
 
 
 if __name__ == "__main__":

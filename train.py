@@ -10,17 +10,17 @@ import polars as pl
 from sklearn.model_selection import train_test_split
 
 INPUT_PATH = Path("Output/filtered/filtered.parquet")
-OUTPUT_DIR = Path("Output/model")
+OUTPUT_DIR = Path("Output/model_tim")
 
 NUMERIC_CAST_COLS = [
-    "Dauer_plan",
-    "Abfahrtzeitrel",
-    "Ankunftzeitrel",
-    "Dauer_ist",
+    #"Dauer_plan",
+    #"Abfahrtzeitrel",
+    #"Ankunftzeitrel",
+    #"Dauer_ist",
     "Dauer_kombiniert",
     "Zugeinheiten Km",
-    "TFZ-km",
-    "TLKM",
+    #"TFZ-km",
+    #"TLKM",
     "Temperatur Ab [°C]",
     "Temperatur An [°C]",
     "Schneehöhe Ab [cm]",
@@ -60,12 +60,12 @@ def train(input_path: Path = INPUT_PATH, output_dir: Path = OUTPUT_DIR) -> None:
     df = df.with_columns(pl.col(TARGET).cast(pl.Float64, strict=False))
 
     # Derived features computed in process.py
-    if "delay_diff_min" in df.columns:
-        existing_features.append("delay_diff_min")
-    for col in ("year", "month", "day"):
-        if col in df.columns:
-            existing_features.append(col)
-    for col in ("elevation_ab_m", "elevation_an_m", "elevation_diff_m"):
+    #if "delay_diff_min" in df.columns:
+     #   existing_features.append("delay_diff_min")
+    #for col in ("year", "month", "day"):
+     #   if col in df.columns:
+      #      existing_features.append(col)
+    for col in ("elevation_diff_m",):
         if col in df.columns:
             existing_features.append(col)
 
@@ -101,7 +101,7 @@ def train(input_path: Path = INPUT_PATH, output_dir: Path = OUTPUT_DIR) -> None:
 
     # Train LightGBM
     model = lgb.LGBMRegressor(
-        n_estimators=10000,
+        n_estimators=20000,
         learning_rate=0.01,
         max_depth=10,
         num_leaves=127,
@@ -134,6 +134,8 @@ def train(input_path: Path = INPUT_PATH, output_dir: Path = OUTPUT_DIR) -> None:
 
     # Save results
     output_dir.mkdir(parents=True, exist_ok=True)
+    model.booster_.save_model(str(output_dir / "model.txt"))
+    print(f"Model saved to: {output_dir / 'model.txt'}")
     importance.write_csv(output_dir / "feature_importance.csv")
 
     # Plot
